@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1379,15 +1378,31 @@ func competitionRankingHandler(c echo.Context) error {
 	if err := tenantDB.SelectContext(
 		ctx,
 		&psps,
-		"SELECT ps.score as score, p.id as player_id, p.display_name as display_name, ps.row_num as row_num FROM player_score ps LEFT JOIN player p ON ps.player_id = p.id WHERE ps.tenant_id = ? AND ps.competition_id = ? ORDER BY ps.row_num ASC",
+		"SELECT ps.score as score, p.id as player_id, p.display_name as display_name, ps.row_num as row_num FROM player_score ps LEFT JOIN player p ON ps.player_id = p.id WHERE ps.tenant_id = ? AND ps.competition_id = ? ORDER BY ps.score DESC, ps.row_num ASC LIMIT ?",
 		tenant.ID,
 		competitionID,
 	); err != nil {
 		return fmt.Errorf("error Select player_score: tenantID=%d, competitionID=%s, %w", tenant.ID, competitionID, err)
 	}
+
+	// NOTE: 同じplayerでもrow_numが大きいものをスコアとして採用する
+	filteredPlayerScorePlayers := []PlayerScorePlayer{}
+	playerScoreRowNumByPlayerID := map[string]int64{}
+	for _, psp := range psps {
+		if rowNum, ok := playerScoreRowNumByPlayerID[psp.PlayerID]; ok {
+			if rowNum > psp.RowNum {
+				continue
+			}
+		} else {
+			playerScoreRowNumByPlayerID[psp.PlayerID] = psp.RowNum
+		}
+
+		filteredPlayerScorePlayers = append(filteredPlayerScorePlayers, psp)
+	}
+
 	ranks := make([]CompetitionRank, 0, len(psps))
 	scoredPlayerSet := make(map[string]struct{}, len(psps))
-	for _, psp := range psps {
+	for _, psp := range filteredPlayerScorePlayers {
 		// player_scoreが同一player_id内ではrow_numの降順でソートされているので
 		// 現れたのが2回目以降のplayer_idはより大きいrow_numでスコアが出ているとみなせる
 		if _, ok := scoredPlayerSet[psp.PlayerID]; ok {
@@ -1405,12 +1420,12 @@ func competitionRankingHandler(c echo.Context) error {
 			RowNum:            psp.RowNum,
 		})
 	}
-	sort.Slice(ranks, func(i, j int) bool {
-		if ranks[i].Score == ranks[j].Score {
-			return ranks[i].RowNum < ranks[j].RowNum
-		}
-		return ranks[i].Score > ranks[j].Score
-	})
+	// sort.Slice(ranks, func(i, j int) bool {
+	// 	if ranks[i].Score == ranks[j].Score {
+	// 		return ranks[i].RowNum < ranks[j].RowNum
+	// 	}
+	// 	return ranks[i].Score > ranks[j].Score
+	// })
 	pagedRanks := make([]CompetitionRank, 0, 100)
 	for i, rank := range ranks {
 		if int64(i) < rankAfter {
