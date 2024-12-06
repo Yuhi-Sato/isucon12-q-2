@@ -32,5 +32,6 @@ CREATE TABLE player_score (
   created_at BIGINT NOT NULL,
   updated_at BIGINT NOT NULL
 );
-CREATE INDEX idx_tenant_id_competition_id_player_id ON player_score(`tenant_id`, `competition_id`, `player_id`);
+CREATE INDEX idx_player_id ON player_score(`player_id`);
+CREATE INDEX idx_row_num_desc ON player_score(`row_num` DESC);
 CREATE INDEX idx_score_desc_row_num ON player_score(`score` DESC, `row_num`);
