@@ -610,7 +610,12 @@ func billingReportByCompetition(ctx context.Context, tenantDB dbOrTx, tenantID i
 	}, nil
 }
 
-func billingReportByCompetitionForTenantsBillingHandler(ctx context.Context, tenantDB dbOrTx, tenantID int64, comp CompetitionRow, scoredPlayerIDs []string) (*BillingReport, error) {
+func billingReportByCompetitionForTenantsBillingHandler(ctx context.Context, tenantDB dbOrTx, tenantID int64, competitonID string, scoredPlayerIDs []string) (*BillingReport, error) {
+	comp, err := retrieveCompetition(ctx, tenantDB, competitonID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieveCompetition: %w", err)
+	}
+
 	if !comp.FinishedAt.Valid {
 		return &BillingReport{
 			BillingYen: 0,
@@ -652,12 +657,12 @@ func billingReportByCompetitionForTenantsBillingHandler(ctx context.Context, ten
 	// 	"SELECT DISTINCT(player_id) FROM player_score WHERE tenant_id = ? AND competition_id = ?",
 	// 	tenantID, comp.ID,
 	// ); err != nil && err != sql.ErrNoRows {
-	// 	return nil, fmt.Errorf("error Select count player_score: tenantID=%d, competitionID=%s, %w", tenantID, comp.ID, err)
+	// 	return nil, fmt.Errorf("error Select count player_score: tenantID=%d, competitionID=%s, %w", tenantID, competitonID, err)
 	// }
-	for _, pid := range scoredPlayerIDs {
-		// スコアが登録されている参加者
-		billingMap[pid] = "player"
-	}
+	// for _, pid := range scoredPlayerIDs {
+	// 	// スコアが登録されている参加者
+	// 	billingMap[pid] = "player"
+	// }
 
 	// 大会が終了している場合のみ請求金額が確定するので計算する
 	var playerCount, visitorCount int64
@@ -734,39 +739,6 @@ func tenantsBillingHandler(c echo.Context) error {
 	if err := adminDB.SelectContext(ctx, &ts, "SELECT * FROM tenant ORDER BY id DESC"); err != nil {
 		return fmt.Errorf("error Select tenant: %w", err)
 	}
-
-	tenantIDs := make([]int64, 0, len(ts))
-	for _, t := range ts {
-		tenantIDs = append(tenantIDs, t.ID)
-	}
-	qeury := "SELECT * FROM competition WHERE tenant_id IN (?)"
-	query, args, _ := sqlx.In(qeury, tenantIDs)
-	cs := []CompetitionRow{}
-	if err := adminDB.SelectContext(ctx, &cs, query, args...); err != nil {
-		return fmt.Errorf("error Select competition: %w", err)
-	}
-
-	competitionsByTenantID := map[int64][]CompetitionRow{}
-	for _, c := range cs {
-		competitionsByTenantID[c.TenantID] = append(competitionsByTenantID[c.TenantID], c)
-	}
-
-	competitionIDs := make([]string, 0, len(cs))
-	for _, c := range cs {
-		competitionIDs = append(competitionIDs, c.ID)
-	}
-	playerScores := []PlayerScoreRow{}
-	query = "SELECT player_id, competition_id FROM player_score WHERE competition_id IN (?) GROUP BY player_id, competition_id"
-	query, args, _ = sqlx.In(query, competitionIDs)
-	if err := adminDB.SelectContext(ctx, &playerScores, query, args...); err != nil {
-		return fmt.Errorf("error Select player_score: %w", err)
-	}
-
-	playerIDsByCompetitionID := map[string][]string{}
-	for _, ps := range playerScores {
-		playerIDsByCompetitionID[ps.CompetitionID] = append(playerIDsByCompetitionID[ps.CompetitionID], ps.PlayerID)
-	}
-
 	tenantBillings := make([]TenantWithBilling, 0, len(ts))
 	for _, t := range ts {
 		if beforeID != 0 && beforeID <= t.ID {
@@ -783,18 +755,33 @@ func tenantsBillingHandler(c echo.Context) error {
 				return fmt.Errorf("failed to connectToTenantDB: %w", err)
 			}
 			defer tenantDB.Close()
-			// cs := []CompetitionRow{}
-			// if err := tenantDB.SelectContext(
-			// 	ctx,
-			// 	&cs,
-			// 	"SELECT * FROM competition WHERE tenant_id=?",
-			// 	t.ID,
-			// ); err != nil {
-			// 	return fmt.Errorf("failed to Select competition: %w", err)
-			// }
-			cs := competitionsByTenantID[t.ID]
+			cs := []CompetitionRow{}
+			if err := tenantDB.SelectContext(
+				ctx,
+				&cs,
+				"SELECT * FROM competition WHERE tenant_id=?",
+				t.ID,
+			); err != nil {
+				return fmt.Errorf("failed to Select competition: %w", err)
+			}
+
+			playerScores := []PlayerScoreRow{}
+			if err := tenantDB.SelectContext(
+				ctx,
+				&playerScores,
+				"SELECT player_id, competition_id FROM player_score WHERE tenant_id=? GROUP BY player_id, competition_id",
+				t.ID,
+			); err != nil {
+				return fmt.Errorf("failed to Select player_score: %w", err)
+			}
+
+			playerIDsByCompetition := map[string][]string{}
+			for _, ps := range playerScores {
+				playerIDsByCompetition[ps.CompetitionID] = append(playerIDsByCompetition[ps.CompetitionID], ps.PlayerID)
+			}
+
 			for _, comp := range cs {
-				report, err := billingReportByCompetitionForTenantsBillingHandler(ctx, tenantDB, t.ID, comp, playerIDsByCompetitionID[comp.ID])
+				report, err := billingReportByCompetitionForTenantsBillingHandler(ctx, tenantDB, t.ID, comp.ID, playerIDsByCompetition[comp.ID])
 				if err != nil {
 					return fmt.Errorf("failed to billingReportByCompetition: %w", err)
 				}
