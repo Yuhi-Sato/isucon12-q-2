@@ -1381,6 +1381,7 @@ func competitionRankingHandler(c echo.Context) error {
 		"SELECT ps.score as score, p.id as player_id, p.display_name as display_name, ps.row_num as row_num FROM player_score ps LEFT JOIN player p ON ps.player_id = p.id WHERE ps.tenant_id = ? AND ps.competition_id = ? ORDER BY ps.score DESC, ps.row_num ASC LIMIT ?",
 		tenant.ID,
 		competitionID,
+		100+rankAfter,
 	); err != nil {
 		return fmt.Errorf("error Select player_score: tenantID=%d, competitionID=%s, %w", tenant.ID, competitionID, err)
 	}
