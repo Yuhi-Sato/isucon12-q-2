@@ -610,6 +610,83 @@ func billingReportByCompetition(ctx context.Context, tenantDB dbOrTx, tenantID i
 	}, nil
 }
 
+func billingReportByCompetitionForTenantsBillingHandler(ctx context.Context, tenantDB dbOrTx, tenantID int64, competitonID string, scoredPlayerIDs []string) (*BillingReport, error) {
+	comp, err := retrieveCompetition(ctx, tenantDB, competitonID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieveCompetition: %w", err)
+	}
+
+	if !comp.FinishedAt.Valid {
+		return &BillingReport{
+			BillingYen: 0,
+		}, nil
+	}
+
+	// ランキングにアクセスした参加者のIDを取得する
+	vhs := []VisitHistorySummaryRow{}
+	if err := adminDB.SelectContext(
+		ctx,
+		&vhs,
+		"SELECT player_id, MIN(created_at) AS min_created_at FROM visit_history WHERE tenant_id = ? AND competition_id = ? GROUP BY player_id",
+		tenantID,
+		comp.ID,
+	); err != nil && err != sql.ErrNoRows {
+		return nil, fmt.Errorf("error Select visit_history: tenantID=%d, competitionID=%s, %w", tenantID, comp.ID, err)
+	}
+	billingMap := map[string]string{}
+	for _, vh := range vhs {
+		// competition.finished_atよりもあとの場合は、終了後に訪問したとみなして大会開催内アクセス済みとみなさない
+		if comp.FinishedAt.Valid && comp.FinishedAt.Int64 < vh.MinCreatedAt {
+			continue
+		}
+		billingMap[vh.PlayerID] = "visitor"
+	}
+
+	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
+	fl, err := flockByTenantID(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("error flockByTenantID: %w", err)
+	}
+	defer fl.Close()
+
+	// スコアを登録した参加者のIDを取得する
+	// scoredPlayerIDs := []string{}
+	// if err := tenantDB.SelectContext(
+	// 	ctx,
+	// 	&scoredPlayerIDs,
+	// 	"SELECT DISTINCT(player_id) FROM player_score WHERE tenant_id = ? AND competition_id = ?",
+	// 	tenantID, comp.ID,
+	// ); err != nil && err != sql.ErrNoRows {
+	// 	return nil, fmt.Errorf("error Select count player_score: tenantID=%d, competitionID=%s, %w", tenantID, competitonID, err)
+	// }
+	for _, pid := range scoredPlayerIDs {
+		// スコアが登録されている参加者
+		billingMap[pid] = "player"
+	}
+
+	// 大会が終了している場合のみ請求金額が確定するので計算する
+	var playerCount, visitorCount int64
+	if comp.FinishedAt.Valid {
+		for _, category := range billingMap {
+			switch category {
+			case "player":
+				playerCount++
+			case "visitor":
+				visitorCount++
+			}
+		}
+	}
+	return &BillingReport{
+		CompetitionID:     comp.ID,
+		CompetitionTitle:  comp.Title,
+		PlayerCount:       playerCount,
+		VisitorCount:      visitorCount,
+		BillingPlayerYen:  100 * playerCount, // スコアを登録した参加者は100円
+		BillingVisitorYen: 10 * visitorCount, // ランキングを閲覧だけした(スコアを登録していない)参加者は10円
+		BillingYen:        100*playerCount + 10*visitorCount,
+	}, nil
+}
+
 type TenantWithBilling struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -659,6 +736,15 @@ func tenantsBillingHandler(c echo.Context) error {
 	//   を合計したものを
 	// テナントの課金とする
 	ts := []TenantRow{}
+	if beforeID != 0 {
+		if err := adminDB.SelectContext(ctx, &ts, "SELECT * FROM tenant WHERE id < ? ORDER BY id DESC LIMIT 10", beforeID); err != nil {
+			return fmt.Errorf("error Select tenant: %w", err)
+		}
+	} else {
+		if err := adminDB.SelectContext(ctx, &ts, "SELECT * FROM tenant ORDER BY id DESC LIMIT 10"); err != nil {
+			return fmt.Errorf("error Select tenant: %w", err)
+		}
+	}
 	if err := adminDB.SelectContext(ctx, &ts, "SELECT * FROM tenant ORDER BY id DESC"); err != nil {
 		return fmt.Errorf("error Select tenant: %w", err)
 	}
@@ -687,8 +773,24 @@ func tenantsBillingHandler(c echo.Context) error {
 			); err != nil {
 				return fmt.Errorf("failed to Select competition: %w", err)
 			}
+
+			playerScores := []PlayerScoreRow{}
+			if err := tenantDB.SelectContext(
+				ctx,
+				&playerScores,
+				"SELECT player_id, competition_id FROM player_score WHERE tenant_id=? GROUP BY player_id, competition_id",
+				t.ID,
+			); err != nil {
+				return fmt.Errorf("failed to Select player_score: %w", err)
+			}
+
+			playerIDsByCompetition := map[string][]string{}
+			for _, ps := range playerScores {
+				playerIDsByCompetition[ps.CompetitionID] = append(playerIDsByCompetition[ps.CompetitionID], ps.PlayerID)
+			}
+
 			for _, comp := range cs {
-				report, err := billingReportByCompetition(ctx, tenantDB, t.ID, comp.ID)
+				report, err := billingReportByCompetitionForTenantsBillingHandler(ctx, tenantDB, t.ID, comp.ID, playerIDsByCompetition[comp.ID])
 				if err != nil {
 					return fmt.Errorf("failed to billingReportByCompetition: %w", err)
 				}
