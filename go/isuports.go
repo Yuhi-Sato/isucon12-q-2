@@ -1299,6 +1299,14 @@ type CompetitionRankingHandlerResult struct {
 	Ranks       []CompetitionRank `json:"ranks"`
 }
 
+type PlayerScorePlayer struct {
+	ID          string `db:"id"`
+	PlayerID    string `db:"player_id"`
+	RowNum      int64  `db:"row_num"`
+	Score       int64  `db:"score"`
+	DisplayName string `db:"display_name"`
+}
+
 // 参加者向けAPI
 // GET /api/player/competition/:competition_id/ranking
 // 大会ごとのランキングを取得する
@@ -1367,34 +1375,34 @@ func competitionRankingHandler(c echo.Context) error {
 		return fmt.Errorf("error flockByTenantID: %w", err)
 	}
 	defer fl.Close()
-	pss := []PlayerScoreRow{}
+	psps := []PlayerScorePlayer{}
 	if err := tenantDB.SelectContext(
 		ctx,
-		&pss,
-		"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? ORDER BY row_num DESC",
+		&psps,
+		"SELECT ps.score as score, p.player_id as player_id, p.display_name as display_name, ps.row_num as row_num FROM player_score ps LEFT JOIN player p ON ps.player_id = p.id WHERE ps.tenant_id = ? AND ps.competition_id = ? ORDER BY ps.row_num ASC",
 		tenant.ID,
 		competitionID,
 	); err != nil {
 		return fmt.Errorf("error Select player_score: tenantID=%d, competitionID=%s, %w", tenant.ID, competitionID, err)
 	}
-	ranks := make([]CompetitionRank, 0, len(pss))
-	scoredPlayerSet := make(map[string]struct{}, len(pss))
-	for _, ps := range pss {
+	ranks := make([]CompetitionRank, 0, len(psps))
+	scoredPlayerSet := make(map[string]struct{}, len(psps))
+	for _, psp := range psps {
 		// player_scoreが同一player_id内ではrow_numの降順でソートされているので
 		// 現れたのが2回目以降のplayer_idはより大きいrow_numでスコアが出ているとみなせる
-		if _, ok := scoredPlayerSet[ps.PlayerID]; ok {
+		if _, ok := scoredPlayerSet[psp.PlayerID]; ok {
 			continue
 		}
-		scoredPlayerSet[ps.PlayerID] = struct{}{}
-		p, err := retrievePlayer(ctx, tenantDB, ps.PlayerID)
-		if err != nil {
-			return fmt.Errorf("error retrievePlayer: %w", err)
-		}
+		scoredPlayerSet[psp.PlayerID] = struct{}{}
+		// p, err := retrievePlayer(ctx, tenantDB, ps.PlayerID)
+		// if err != nil {
+		// 	return fmt.Errorf("error retrievePlayer: %w", err)
+		// }
 		ranks = append(ranks, CompetitionRank{
-			Score:             ps.Score,
-			PlayerID:          p.ID,
-			PlayerDisplayName: p.DisplayName,
-			RowNum:            ps.RowNum,
+			Score:             psp.Score,
+			PlayerID:          psp.PlayerID,
+			PlayerDisplayName: psp.DisplayName,
+			RowNum:            psp.RowNum,
 		})
 	}
 	sort.Slice(ranks, func(i, j int) bool {
