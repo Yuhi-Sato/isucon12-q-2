@@ -659,10 +659,10 @@ func billingReportByCompetitionForTenantsBillingHandler(ctx context.Context, ten
 	// ); err != nil && err != sql.ErrNoRows {
 	// 	return nil, fmt.Errorf("error Select count player_score: tenantID=%d, competitionID=%s, %w", tenantID, competitonID, err)
 	// }
-	// for _, pid := range scoredPlayerIDs {
-	// 	// スコアが登録されている参加者
-	// 	billingMap[pid] = "player"
-	// }
+	for _, pid := range scoredPlayerIDs {
+		// スコアが登録されている参加者
+		billingMap[pid] = "player"
+	}
 
 	// 大会が終了している場合のみ請求金額が確定するので計算する
 	var playerCount, visitorCount int64
