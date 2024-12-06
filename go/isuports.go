@@ -185,9 +185,6 @@ func Run() {
 
 	e.HTTPErrorHandler = errorResponseHandler
 
-	cmd := exec.Command("sh", "-c", "/home/isucon/env.sh")
-	cmd.Run()
-
 	adminDB, err = connectAdminDB()
 	if err != nil {
 		e.Logger.Fatalf("failed to connect db: %v", err)
