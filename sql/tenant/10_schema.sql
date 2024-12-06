@@ -30,4 +30,4 @@ CREATE TABLE player_score (
   created_at BIGINT NOT NULL,
   updated_at BIGINT NOT NULL
 );
-ALTER TABLE player_score ADD INDEX idx_score_desc_row_num(`score` DESC, `row_num` ASC);
+ALTER TABLE player_score ADD INDEX idx_score_desc_row_num(`score`, `row_num`);
