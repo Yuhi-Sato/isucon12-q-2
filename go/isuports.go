@@ -1379,7 +1379,7 @@ func competitionRankingHandler(c echo.Context) error {
 	if err := tenantDB.SelectContext(
 		ctx,
 		&psps,
-		"SELECT ps.score as score, p.player_id as player_id, p.display_name as display_name, ps.row_num as row_num FROM player_score ps LEFT JOIN player p ON ps.player_id = p.id WHERE ps.tenant_id = ? AND ps.competition_id = ? ORDER BY ps.row_num ASC",
+		"SELECT ps.score as score, p.id as player_id, p.display_name as display_name, ps.row_num as row_num FROM player_score ps LEFT JOIN player p ON ps.player_id = p.id WHERE ps.tenant_id = ? AND ps.competition_id = ? ORDER BY ps.row_num ASC",
 		tenant.ID,
 		competitionID,
 	); err != nil {
