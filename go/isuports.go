@@ -1260,11 +1260,24 @@ func playerHandler(c echo.Context) error {
 	}
 
 	psds := make([]PlayerScoreDetail, 0, len(pss))
+	competitionIDs := make([]string, 0, len(pss))
 	for _, ps := range pss {
-		comp, err := retrieveCompetition(ctx, tenantDB, ps.CompetitionID)
-		if err != nil {
-			return fmt.Errorf("error retrieveCompetition: %w", err)
-		}
+		competitionIDs = append(competitionIDs, ps.CompetitionID)
+	}
+
+	query := "SELECT * FROM competition WHERE id IN (?)"
+	query, args, _ := sqlx.In(query, competitionIDs)
+	comps := []CompetitionRow{}
+	if err := tenantDB.SelectContext(ctx, &comps, query, args...); err != nil {
+		return fmt.Errorf("error Select competition: %w", err)
+	}
+
+	for i, ps := range pss {
+		// comp, err := retrieveCompetition(ctx, tenantDB, ps.CompetitionID)
+		// if err != nil {
+		// 	return fmt.Errorf("error retrieveCompetition: %w", err)
+		// }
+		comp := comps[i]
 		psds = append(psds, PlayerScoreDetail{
 			CompetitionTitle: comp.Title,
 			Score:            ps.Score,
