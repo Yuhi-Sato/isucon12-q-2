@@ -1,0 +1,1 @@
+ALTER TABLE `visit_history` ADD INDEX idx_tenant_id_competition_id_player_id_created_at (`tenant_id`, `competition_id`, `player_id`, `created_at`);
