@@ -775,10 +775,17 @@ func tenantsBillingHandler(c echo.Context) error {
 			}
 
 			for _, comp := range cs {
-				report, err := billingReportByCompetitionForTenantsBillingHandler(ctx, tenantDB, t.ID, comp.ID, playerIDsByCompetition[comp.ID])
-				if err != nil {
-					return fmt.Errorf("failed to billingReportByCompetition: %w", err)
+				report := new(BillingReport)
+				if val, ok := billingByCompetitionID.Load(comp.ID); ok {
+					report = val.(*BillingReport)
+				} else {
+					report, err = billingReportByCompetition(ctx, tenantDB, t.ID, comp.ID, playerIDsByCompetition[comp.ID])
+					if err != nil {
+						return fmt.Errorf("failed to billingReportByCompetition: %w", err)
+					}
+					billingByCompetitionID.Store(comp.ID, report)
 				}
+
 				tb.BillingYen += report.BillingYen
 			}
 			tenantBillings = append(tenantBillings, tb)
