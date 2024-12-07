@@ -549,12 +549,6 @@ func billingReportByCompetition(ctx context.Context, tenantDB dbOrTx, tenantID i
 		return nil, fmt.Errorf("error retrieveCompetition: %w", err)
 	}
 
-	if !comp.FinishedAt.Valid {
-		return &BillingReport{
-			BillingYen: 0,
-		}, nil
-	}
-
 	// ランキングにアクセスした参加者のIDを取得する
 	vhs := []VisitHistorySummaryRow{}
 	if err := adminDB.SelectContext(
@@ -1235,7 +1229,7 @@ func competitionScoreHandler(c echo.Context) error {
 
 	for _, ps := range playerScoreRows {
 		key := fmt.Sprintf("%d:%s:%s", v.tenantID, competitionID, ps.PlayerID)
-		playerScoreByTenantIDCompetitionIDPlayerID.Store(key, ps)
+		playerScoreByTenantIDCompetitionIDPlayerID.Delete(key)
 	}
 
 	tx.Commit()
