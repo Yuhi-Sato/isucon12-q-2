@@ -2,7 +2,7 @@
 
 # データベースファイルがあるディレクトリ
 TARGET_DIR=${1:-/home/isucon/initial_data}
-OUTPUT_DIR=${2:-/home/isucon/webapp/sql/csv}
+OUTPUT_DIR=${2:-/var/lib/mysql-files/}
 
 # CSV出力ディレクトリを作成（存在しない場合）
 if [ ! -d "$OUTPUT_DIR" ]; then
