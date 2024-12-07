@@ -47,6 +47,8 @@ var (
 	sqliteDriverName = "sqlite3"
 
 	playerScoreByTenantIDCompetitionIDPlayerID sync.Map
+
+	billingByCompetitionID sync.Map
 )
 
 // 環境変数を取得する、なければデフォルト値を返す
@@ -1064,6 +1066,29 @@ func competitionFinishHandler(c echo.Context) error {
 			now, now, id, err,
 		)
 	}
+
+	playerScores := []PlayerScoreRow{}
+	if err := tenantDB.SelectContext(
+		ctx,
+		&playerScores,
+		"SELECT player_id, competition_id FROM player_score WHERE tenant_id=? GROUP BY player_id, competition_id",
+		v.tenantID,
+	); err != nil {
+		return fmt.Errorf("failed to Select player_score: %w", err)
+	}
+
+	playerIDsByCompetition := map[string][]string{}
+	for _, ps := range playerScores {
+		playerIDsByCompetition[ps.CompetitionID] = append(playerIDsByCompetition[ps.CompetitionID], ps.PlayerID)
+	}
+
+	billing, err := billingReportByCompetition(ctx, tenantDB, v.tenantID, id, []string{})
+	if err != nil {
+		return fmt.Errorf("failed to billingReportByCompetition: %w", err)
+	}
+
+	billingByCompetitionID.Store(id, billing)
+
 	return c.JSON(http.StatusOK, SuccessResult{Status: true})
 }
 
@@ -1263,9 +1288,16 @@ func billingHandler(c echo.Context) error {
 
 	tbrs := make([]BillingReport, 0, len(cs))
 	for _, comp := range cs {
-		report, err := billingReportByCompetition(ctx, tenantDB, v.tenantID, comp.ID, playerIDsByCompetition[comp.ID])
-		if err != nil {
-			return fmt.Errorf("error billingReportByCompetition: %w", err)
+		report := new(BillingReport)
+		if val, ok := billingByCompetitionID.Load(comp.ID); ok {
+			report = val.(*BillingReport)
+		} else {
+			report, err = billingReportByCompetition(ctx, tenantDB, v.tenantID, comp.ID, playerIDsByCompetition[comp.ID])
+			if err != nil {
+				return fmt.Errorf("error billingReportByCompetition: %w", err)
+			}
+
+			billingByCompetitionID.Store(comp.ID, report)
 		}
 		tbrs = append(tbrs, *report)
 	}
