@@ -1369,7 +1369,7 @@ func playerHandler(c echo.Context) error {
 	if err := tenantDB.SelectContext(
 		ctx,
 		&cs,
-		"SELECT * FROM competition WHERE tenant_id = ? ORDER BY created_at ASC",
+		"SELECT id FROM competition WHERE tenant_id = ? ORDER BY created_at ASC",
 		v.tenantID,
 	); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("error Select competition: %w", err)
@@ -1391,7 +1391,7 @@ func playerHandler(c echo.Context) error {
 				ctx,
 				&ps,
 				// 最後にCSVに登場したスコアを採用する = row_numが一番大きいもの
-				"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ? ORDER BY row_num DESC LIMIT 1",
+				"SELECT score FROM player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ? ORDER BY row_num DESC LIMIT 1",
 				v.tenantID,
 				c.ID,
 				p.ID,
@@ -1416,7 +1416,7 @@ func playerHandler(c echo.Context) error {
 		competitionIDs = append(competitionIDs, ps.CompetitionID)
 	}
 
-	query := "SELECT * FROM competition WHERE id IN (?)"
+	query := "SELECT title FROM competition WHERE id IN (?)"
 	query, args, _ := sqlx.In(query, competitionIDs)
 	comps := []CompetitionRow{}
 	if err := tenantDB.SelectContext(ctx, &comps, query, args...); err != nil {
