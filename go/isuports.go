@@ -1369,18 +1369,23 @@ func playerHandler(c echo.Context) error {
 	}
 
 	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-	fl, err := flockByTenantID(v.tenantID)
+	// fl, err := flockByTenantID(v.tenantID)
+	// if err != nil {
+	// 	return fmt.Errorf("error flockByTenantID: %w", err)
+	// }
+	// defer fl.Close()
+	tx, err := tenantDB.Beginx()
 	if err != nil {
-		return fmt.Errorf("error flockByTenantID: %w", err)
+		return fmt.Errorf("error tenantDB.Beginx: %w", err)
 	}
-	defer fl.Close()
+	defer tx.Rollback()
 	pss := make([]PlayerScoreRow, 0, len(cs))
 	for _, c := range cs {
 		ps := PlayerScoreRow{}
 		if val, ok := playerScoreByTenantIDCompetitionIDPlayerID.Load(fmt.Sprintf("%d:%s:%s", v.tenantID, c.ID, p.ID)); ok {
 			ps = val.(PlayerScoreRow)
 		} else {
-			if err := tenantDB.GetContext(
+			if err := tx.GetContext(
 				ctx,
 				&ps,
 				// 最後にCSVに登場したスコアを採用する = row_numが一番大きいもの
@@ -1412,7 +1417,7 @@ func playerHandler(c echo.Context) error {
 	query := "SELECT title FROM competition WHERE id IN (?)"
 	query, args, _ := sqlx.In(query, competitionIDs)
 	comps := []CompetitionRow{}
-	if err := tenantDB.SelectContext(ctx, &comps, query, args...); err != nil {
+	if err := tx.SelectContext(ctx, &comps, query, args...); err != nil {
 		return fmt.Errorf("error Select competition: %w", err)
 	}
 
