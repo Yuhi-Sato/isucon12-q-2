@@ -1077,17 +1077,19 @@ func competitionFinishHandler(c echo.Context) error {
 		return fmt.Errorf("failed to Select player_score: %w", err)
 	}
 
-	playerIDsByCompetition := map[string][]string{}
-	for _, ps := range playerScores {
-		playerIDsByCompetition[ps.CompetitionID] = append(playerIDsByCompetition[ps.CompetitionID], ps.PlayerID)
-	}
+	// 非同期
+	go func() {
+		billingByCompetitionID := sync.Map{}
 
-	billing, err := billingReportByCompetition(ctx, tenantDB, v.tenantID, id, playerIDsByCompetition[id])
-	if err != nil {
-		return fmt.Errorf("failed to billingReportByCompetition: %w", err)
-	}
+		playerIDsByCompetition := map[string][]string{}
+		for _, ps := range playerScores {
+			playerIDsByCompetition[ps.CompetitionID] = append(playerIDsByCompetition[ps.CompetitionID], ps.PlayerID)
+		}
 
-	billingByCompetitionID.Store(id, billing)
+		billing, _ := billingReportByCompetition(ctx, tenantDB, v.tenantID, id, playerIDsByCompetition[id])
+
+		billingByCompetitionID.Store(id, billing)
+	}()
 
 	return c.JSON(http.StatusOK, SuccessResult{Status: true})
 }
