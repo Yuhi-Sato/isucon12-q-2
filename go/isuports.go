@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/gofrs/flock"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwa"
@@ -432,16 +433,16 @@ func lockFilePath(id int64) string {
 	return filepath.Join(tenantDBDir, fmt.Sprintf("%d.lock", id))
 }
 
-// // 排他ロックする
-// func flockByTenantID(tenantID int64) (io.Closer, error) {
-// 	p := lockFilePath(tenantID)
+// 排他ロックする
+func flockByTenantID(tenantID int64) (io.Closer, error) {
+	p := lockFilePath(tenantID)
 
-// 	fl := flock.New(p)
-// 	if err := fl.Lock(); err != nil {
-// 		return nil, fmt.Errorf("error flock.Lock: path=%s, %w", p, err)
-// 	}
-// 	return fl, nil
-// }
+	fl := flock.New(p)
+	if err := fl.Lock(); err != nil {
+		return nil, fmt.Errorf("error flock.Lock: path=%s, %w", p, err)
+	}
+	return fl, nil
+}
 
 type TenantsAddHandlerResult struct {
 	Tenant TenantWithBilling `json:"tenant"`
