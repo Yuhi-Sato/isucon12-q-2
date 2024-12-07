@@ -991,6 +991,12 @@ func competitionsAddHandler(c echo.Context) error {
 
 	title := c.FormValue("title")
 
+	tx, err := tenantDB.Beginx()
+	if err != nil {
+		return fmt.Errorf("error tenantDB.Beginx: %w", err)
+	}
+	defer tx.Rollback()
+
 	now := time.Now().Unix()
 	id, err := dispenseID(ctx)
 	if err != nil {
@@ -1005,6 +1011,10 @@ func competitionsAddHandler(c echo.Context) error {
 			"error Insert competition: id=%s, tenant_id=%d, title=%s, finishedAt=null, createdAt=%d, updatedAt=%d, %w",
 			id, v.tenantID, title, now, now, err,
 		)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("error tx.Commit: %w", err)
 	}
 
 	res := CompetitionsAddHandlerResult{
