@@ -1082,7 +1082,7 @@ func competitionFinishHandler(c echo.Context) error {
 		playerIDsByCompetition[ps.CompetitionID] = append(playerIDsByCompetition[ps.CompetitionID], ps.PlayerID)
 	}
 
-	billing, err := billingReportByCompetition(ctx, tenantDB, v.tenantID, id, []string{})
+	billing, err := billingReportByCompetition(ctx, tenantDB, v.tenantID, id, playerIDsByCompetition[id])
 	if err != nil {
 		return fmt.Errorf("failed to billingReportByCompetition: %w", err)
 	}
