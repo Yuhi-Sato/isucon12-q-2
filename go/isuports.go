@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -44,6 +45,8 @@ var (
 	adminDB *sqlx.DB
 
 	sqliteDriverName = "sqlite3"
+
+	playerScoreByTenantIDCompetitionIDPlayerID sync.Map
 )
 
 // 環境変数を取得する、なければデフォルト値を返す
@@ -572,16 +575,6 @@ func billingReportByCompetition(ctx context.Context, tenantDB dbOrTx, tenantID i
 	}
 	defer fl.Close()
 
-	// スコアを登録した参加者のIDを取得する
-	// scoredPlayerIDs := []string{}
-	// if err := tenantDB.SelectContext(
-	// 	ctx,
-	// 	&scoredPlayerIDs,
-	// 	"SELECT DISTINCT(player_id) FROM player_score WHERE tenant_id = ? AND competition_id = ?",
-	// 	tenantID, comp.ID,
-	// ); err != nil && err != sql.ErrNoRows {
-	// 	return nil, fmt.Errorf("error Select count player_score: tenantID=%d, competitionID=%s, %w", tenantID, competitonID, err)
-	// }
 	for _, pid := range scoredPlayerIDs {
 		// スコアが登録されている参加者
 		billingMap[pid] = "player"
@@ -649,16 +642,6 @@ func billingReportByCompetitionForTenantsBillingHandler(ctx context.Context, ten
 	}
 	defer fl.Close()
 
-	// スコアを登録した参加者のIDを取得する
-	// scoredPlayerIDs := []string{}
-	// if err := tenantDB.SelectContext(
-	// 	ctx,
-	// 	&scoredPlayerIDs,
-	// 	"SELECT DISTINCT(player_id) FROM player_score WHERE tenant_id = ? AND competition_id = ?",
-	// 	tenantID, comp.ID,
-	// ); err != nil && err != sql.ErrNoRows {
-	// 	return nil, fmt.Errorf("error Select count player_score: tenantID=%d, competitionID=%s, %w", tenantID, competitonID, err)
-	// }
 	for _, pid := range scoredPlayerIDs {
 		// スコアが登録されている参加者
 		billingMap[pid] = "player"
@@ -1369,21 +1352,29 @@ func playerHandler(c echo.Context) error {
 	pss := make([]PlayerScoreRow, 0, len(cs))
 	for _, c := range cs {
 		ps := PlayerScoreRow{}
-		if err := tenantDB.GetContext(
-			ctx,
-			&ps,
-			// 最後にCSVに登場したスコアを採用する = row_numが一番大きいもの
-			"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ? ORDER BY row_num DESC LIMIT 1",
-			v.tenantID,
-			c.ID,
-			p.ID,
-		); err != nil {
-			// 行がない = スコアが記録されてない
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
+		if val, ok := playerScoreByTenantIDCompetitionIDPlayerID.Load(fmt.Sprintf("%d:%s:%s", v.tenantID, c.ID, p.ID)); ok {
+			ps = val.(PlayerScoreRow)
+		} else {
+			if err := tenantDB.GetContext(
+				ctx,
+				&ps,
+				// 最後にCSVに登場したスコアを採用する = row_numが一番大きいもの
+				"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ? ORDER BY row_num DESC LIMIT 1",
+				v.tenantID,
+				c.ID,
+				p.ID,
+			); err != nil {
+				// 行がない = スコアが記録されてない
+				if errors.Is(err, sql.ErrNoRows) {
+					continue
+				}
+				return fmt.Errorf("error Select player_score: tenantID=%d, competitionID=%s, playerID=%s, %w", v.tenantID, c.ID, p.ID, err)
 			}
-			return fmt.Errorf("error Select player_score: tenantID=%d, competitionID=%s, playerID=%s, %w", v.tenantID, c.ID, p.ID, err)
+
+			key := fmt.Sprintf("%d:%s:%s", v.tenantID, c.ID, p.ID)
+			playerScoreByTenantIDCompetitionIDPlayerID.Store(key, ps)
 		}
+
 		pss = append(pss, ps)
 	}
 
