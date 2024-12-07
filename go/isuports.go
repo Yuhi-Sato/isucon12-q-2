@@ -1048,14 +1048,8 @@ func competitionFinishHandler(c echo.Context) error {
 		return fmt.Errorf("error retrieveCompetition: %w", err)
 	}
 
-	tx, err := tenantDB.Beginx()
-	if err != nil {
-		return fmt.Errorf("error tenantDB.Beginx: %w", err)
-	}
-	defer tx.Rollback()
-
 	now := time.Now().Unix()
-	if _, err := tx.ExecContext(
+	if _, err := tenantDB.ExecContext(
 		ctx,
 		"UPDATE competition SET finished_at = ?, updated_at = ? WHERE id = ?",
 		now, now, id,
@@ -1064,10 +1058,6 @@ func competitionFinishHandler(c echo.Context) error {
 			"error Update competition: finishedAt=%d, updatedAt=%d, id=%s, %w",
 			now, now, id, err,
 		)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("error tx.Commit: %w", err)
 	}
 
 	playerScores := []PlayerScoreRow{}
