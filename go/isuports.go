@@ -1135,10 +1135,8 @@ func competitionScoreHandler(c echo.Context) error {
 		return fmt.Errorf("error flockByTenantID: %w", err)
 	}
 	defer fl.Close()
-	var rowNum int64
 	playerScoreRows := []PlayerScoreRow{}
 	for {
-		rowNum++
 		row, err := r.Read()
 		if err != nil {
 			if err == io.EOF {
@@ -1178,7 +1176,6 @@ func competitionScoreHandler(c echo.Context) error {
 			PlayerID:      playerID,
 			CompetitionID: competitionID,
 			Score:         score,
-			RowNum:        rowNum,
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		})
@@ -1193,7 +1190,7 @@ func competitionScoreHandler(c echo.Context) error {
 		return fmt.Errorf("error Delete player_score: tenantID=%d, competitionID=%s, %w", v.tenantID, competitionID, err)
 	}
 
-	query := "INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES (:id, :tenant_id, :player_id, :competition_id, :score, :row_num, :created_at, :updated_at)"
+	query := "INSERT OR REPLACE INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES (:id, :tenant_id, :player_id, :competition_id, :score, :row_num, :created_at, :updated_at)"
 	if _, err := tenantDB.NamedExecContext(
 		ctx,
 		query,
@@ -1350,7 +1347,7 @@ func playerHandler(c echo.Context) error {
 				ctx,
 				&ps,
 				// 最後にCSVに登場したスコアを採用する = row_numが一番大きいもの
-				"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ? ORDER BY row_num DESC LIMIT 1",
+				"SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ?",
 				v.tenantID,
 				c.ID,
 				p.ID,
