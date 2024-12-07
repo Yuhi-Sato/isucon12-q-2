@@ -1234,8 +1234,6 @@ func competitionScoreHandler(c echo.Context) error {
 		playerScoreByTenantIDCompetitionIDPlayerID.Delete(key)
 	}
 
-	tx.Commit()
-
 	return c.JSON(http.StatusOK, SuccessResult{
 		Status: true,
 		Data:   ScoreHandlerResult{Rows: int64(len(playerScoreRows))},
@@ -1423,8 +1421,6 @@ func playerHandler(c echo.Context) error {
 		return fmt.Errorf("error Select competition: %w", err)
 	}
 
-	tx.Commit()
-
 	for i, ps := range pss {
 		// comp, err := retrieveCompetition(ctx, tenantDB, ps.CompetitionID)
 		// if err != nil {
@@ -1556,8 +1552,6 @@ func competitionRankingHandler(c echo.Context) error {
 	); err != nil {
 		return fmt.Errorf("error Select player_score: tenantID=%d, competitionID=%s, %w", tenant.ID, competitionID, err)
 	}
-
-	tx.Commit()
 
 	// NOTE: 同じplayerでもrow_numが大きいものをスコアとして採用する
 	filteredPlayerScorePlayers := []PlayerScorePlayer{}
