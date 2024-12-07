@@ -1211,7 +1211,7 @@ func competitionScoreHandler(c echo.Context) error {
 		})
 	}
 
-	if _, err := tenantDB.ExecContext(
+	if _, err := tx.ExecContext(
 		ctx,
 		"DELETE FROM player_score WHERE tenant_id = ? AND competition_id = ?",
 		v.tenantID,
@@ -1221,7 +1221,7 @@ func competitionScoreHandler(c echo.Context) error {
 	}
 
 	query := "INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES (:id, :tenant_id, :player_id, :competition_id, :score, :row_num, :created_at, :updated_at)"
-	if _, err := tenantDB.NamedExecContext(
+	if _, err := tx.NamedExecContext(
 		ctx,
 		query,
 		playerScoreRows,
@@ -1531,13 +1531,19 @@ func competitionRankingHandler(c echo.Context) error {
 	}
 
 	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-	fl, err := flockByTenantID(v.tenantID)
+	// fl, err := flockByTenantID(v.tenantID)
+	// if err != nil {
+	// 	return fmt.Errorf("error flockByTenantID: %w", err)
+	// }
+	// defer fl.Close()
+	tx, err := tenantDB.Beginx()
 	if err != nil {
-		return fmt.Errorf("error flockByTenantID: %w", err)
+		return fmt.Errorf("error tenantDB.Beginx: %w", err)
 	}
-	defer fl.Close()
+	defer tx.Rollback()
+
 	psps := []PlayerScorePlayer{}
-	if err := tenantDB.SelectContext(
+	if err := tx.SelectContext(
 		ctx,
 		&psps,
 		"SELECT ps.score as score, p.id as player_id, p.display_name as display_name, ps.row_num as row_num FROM player_score ps LEFT JOIN player p ON ps.player_id = p.id WHERE ps.tenant_id = ? AND ps.competition_id = ? ORDER BY ps.score DESC, ps.row_num ASC LIMIT ?",
